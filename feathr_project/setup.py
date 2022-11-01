@@ -20,7 +20,7 @@ setup(
     include_package_data=True,
     # consider
     install_requires=[
-        "click<=8.1.3",
+        "click<=8.0.4",
         "py4j<=0.10.9.7",
         "loguru<=0.6.0",
         "pandas<=1.5.0",
