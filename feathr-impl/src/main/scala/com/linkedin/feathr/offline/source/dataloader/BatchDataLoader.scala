@@ -4,8 +4,8 @@ import com.linkedin.feathr.common.exception.{ErrorLabel, FeathrInputDataExceptio
 import com.linkedin.feathr.offline.config.location.DataLocation
 import com.linkedin.feathr.offline.generation.SparkIOUtils
 import com.linkedin.feathr.offline.job.DataSourceUtils.getSchemaFromAvroDataFile
-import com.linkedin.feathr.offline.source.dataloader.DataLoaderHandler
 import com.linkedin.feathr.offline.util.DelimiterUtils.checkDelimiterOption
+import com.linkedin.feathr.offline.util.SourceUtils.processDryRun
 import org.apache.avro.Schema
 import org.apache.hadoop.fs.{FileSystem, Path}
 import org.apache.hadoop.mapred.JobConf
@@ -48,7 +48,8 @@ private[offline] class BatchDataLoader(ss: SparkSession, location: DataLocation,
    * @return an dataframe
    */
   override def loadDataFrame(): DataFrame = {
-    loadDataFrame(Map(), new JobConf(ss.sparkContext.hadoopConfiguration))
+    val df = loadDataFrame(Map(), new JobConf(ss.sparkContext.hadoopConfiguration))
+    processDryRun(ss, df)
   }
 
   /**

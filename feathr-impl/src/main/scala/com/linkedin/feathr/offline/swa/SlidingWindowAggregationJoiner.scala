@@ -215,6 +215,7 @@ private[offline] class SlidingWindowAggregationJoiner(
               SlidingWindowFeatureUtils.getFactDataDef(filteredFactData, anchorWithSourceToDFMap.keySet.toSeq, featuresToDelayImmutableMap, selectedFeatures)
           }
         val origContextObsColumns = labelDataDef.dataSource.columns
+
         contextDF = SlidingWindowJoin.join(labelDataDef, factDataDefs.toList)
         val defaults = windowAggAnchorDFThisStage.flatMap(s => s._1.featureAnchor.defaults)
         val userSpecifiedTypesConfig = windowAggAnchorDFThisStage.flatMap(_._1.featureAnchor.featureTypeConfigs)
