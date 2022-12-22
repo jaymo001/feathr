@@ -1,6 +1,8 @@
 package com.linkedin.feathr.swj
 
-import com.linkedin.feathr.offline.evaluator.datasource.DataSourceNodeEvaluator.getClass
+import com.linkedin.feathr.offline.config.location.SimplePath
+import com.linkedin.feathr.offline.generation.SparkIOUtils
+import com.linkedin.feathr.offline.util.FeathrUtils
 import com.linkedin.feathr.swj.join.{FeatureColumnMetaData, SlidingWindowJoinIterator}
 import com.linkedin.feathr.swj.transformer.FeatureTransformer
 import com.linkedin.feathr.swj.transformer.FeatureTransformer._
@@ -8,7 +10,7 @@ import org.apache.log4j.Logger
 import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.types.{ArrayType, StructField, StructType}
 import org.apache.spark.sql.{DataFrame, Row, SparkSession}
-
+import com.linkedin.feathr.offline.transformation.DataFrameExt._
 
 object SlidingWindowJoin {
 
@@ -40,9 +42,8 @@ object SlidingWindowJoin {
 
     val labelDF = addLabelDataCols(labelDataset.dataSource, labelDataset)
     // Partition the label DataFrame by join_key and sort each partition with (join_key, timestamp)
-    var result = labelDF.repartition(numPartitions, labelDF.col(JOIN_KEY_COL_NAME))
+    val labelDFPartitioned = labelDF.repartition(numPartitions, labelDF.col(JOIN_KEY_COL_NAME))
       .sortWithinPartitions(JOIN_KEY_COL_NAME, TIMESTAMP_COL_NAME)
-      .rdd
     var resultSchema = labelDF.schema
     // Pass label data join key and timestamp column index to SlidingWindowJoinIterator
     // so these 2 columns from label data Rows can be accessed with index instead of field name.
@@ -55,6 +56,37 @@ object SlidingWindowJoin {
     // sorting. The result is iteratively sliding-window-joined with either the original label
     // data or result from previous iteration. In addition, the StructType of the final DataFrame
     // is also iteratively constructed.
+    val isDryRun = FeathrUtils.getFeathrJobParam(spark.sparkContext.getConf, FeathrUtils.ENABLE_DRY_RUN).toBoolean
+    var result = if (isDryRun && factDatasets.nonEmpty) {
+      val factDF = FeatureTransformer.transformFactData(factDatasets.head)
+      val refinedContextDF = if (isDryRun) labelDFPartitioned.appendRows(Seq(JOIN_KEY_COL_NAME), Seq(JOIN_KEY_COL_NAME), factDF) else labelDFPartitioned
+      val refinedLabelDFPartitioned = refinedContextDF.repartition(numPartitions, labelDF.col(JOIN_KEY_COL_NAME))
+        .sortWithinPartitions(JOIN_KEY_COL_NAME, TIMESTAMP_COL_NAME)
+      refinedLabelDFPartitioned.rdd
+    } else {
+      labelDFPartitioned.rdd
+    }
+
+    val isDebugMode = FeathrUtils.getFeathrJobParam(spark.sparkContext.getConf, FeathrUtils.ENABLE_DEBUG_OUTPUT).toBoolean
+    if (isDebugMode && factDatasets.nonEmpty) {
+      // dump left keys and right df
+      val factDataset = factDatasets.head
+      val factDF = FeatureTransformer.transformFactData(factDataset)
+      val factTransformedDf = factDF.repartition(numPartitions, factDF.col(JOIN_KEY_COL_NAME))
+        .sortWithinPartitions(JOIN_KEY_COL_NAME, TIMESTAMP_COL_NAME)
+      val basePath = FeathrUtils.getFeathrJobParam(spark.sparkContext.getConf, FeathrUtils.DEBUG_OUTPUT_PATH)
+      val features = "features_" + factDataset.aggFeatures.map(_.name).mkString("_")
+      val leftJoinColumns = Seq(JOIN_KEY_COL_NAME)
+      val leftDfPath = SimplePath(basePath + "/" + features + "_swa_obs_left")
+      log.info(s"SWA: Start dumping observation data before join feature ${features} to ${leftDfPath}")
+      val leftKeyDf = labelDFPartitioned.select(leftJoinColumns.head, leftJoinColumns.tail: _*)
+      SparkIOUtils.writeDataFrame(leftKeyDf, leftDfPath, Map(), List())
+      log.info(s"SWA: Finish dumping observation data before join feature ${features} to ${leftDfPath}")
+      val rightFeaturePath = SimplePath(basePath + "/" + features + "_swa_feature_left_" + leftJoinColumns.mkString("_"))
+      log.info(s"SWA: Start dumping feature data before join feature ${features} to ${rightFeaturePath}")
+      SparkIOUtils.writeDataFrame(factTransformedDf, rightFeaturePath, Map(), List())
+      log.info(s"SWA: Finish dumping feature data before join feature ${features} to ${rightFeaturePath}")
+    }
     factDatasets.foreach(factDataset => {
       // Transform the input fact DataFrame into standardized feature DataFrame. Then partition
       // the feature DataFrame by join_key and sort each partition with (join_key, timestamp)
@@ -62,6 +94,7 @@ object SlidingWindowJoin {
         val factRDD = factDF.repartition(numPartitions, factDF.col(JOIN_KEY_COL_NAME))
           .sortWithinPartitions(JOIN_KEY_COL_NAME, TIMESTAMP_COL_NAME)
           .rdd
+
         val factSchema = factDF.schema
         // Use zipPartition to perform the join. Preserve partition to avoid unnecessary shuffle.
         if (!factDataset.dataSource.isEmpty) {

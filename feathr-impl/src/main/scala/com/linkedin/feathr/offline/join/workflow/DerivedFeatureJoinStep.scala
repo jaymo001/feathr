@@ -1,11 +1,14 @@
 package com.linkedin.feathr.offline.join.workflow
 
 import com.linkedin.feathr.common.FeatureTypeConfig
-import com.linkedin.feathr.{common, offline}
 import com.linkedin.feathr.offline.FeatureDataFrame
 import com.linkedin.feathr.offline.client.DataFrameColName
+import com.linkedin.feathr.offline.config.location.SimplePath
 import com.linkedin.feathr.offline.derived.DerivedFeatureEvaluator
+import com.linkedin.feathr.offline.generation.SparkIOUtils
 import com.linkedin.feathr.offline.join.JoinExecutionContext
+import com.linkedin.feathr.offline.util.FeathrUtils
+import com.linkedin.feathr.{common, offline}
 import org.apache.log4j.Logger
 
 /**
@@ -51,7 +54,17 @@ class DerivedFeatureJoinStep(derivedFeatureEvaluator: DerivedFeatureEvaluator) e
           }
         })
       })
-    FeatureDataFrameOutput(resultFeatureDataFrame)
+    val df = FeatureDataFrameOutput(resultFeatureDataFrame)
+    val isDebugMode = FeathrUtils.getFeathrJobParam(ctx.sparkSession.sparkContext.getConf, FeathrUtils.ENABLE_DEBUG_OUTPUT).toBoolean
+    if (isDebugMode) {
+      val basePath = FeathrUtils.getFeathrJobParam(ctx.sparkSession.sparkContext.getConf, FeathrUtils.DEBUG_OUTPUT_PATH)
+      val featureNames = "features_" + features.map(_.getFeatureName).mkString("_")
+      val derivedDfPath = SimplePath(basePath + "/" + featureNames + "_derived_feature")
+      log.info(s"Start dumping derived feature data ${featureNames} to ${derivedDfPath}")
+      SparkIOUtils.writeDataFrame(df.obsAndFeatures.df, derivedDfPath, Map(), List())
+      log.info(s"Finish dumping derived feature data ${featureNames} to ${derivedDfPath}")
+    }
+    df
   }
 }
 

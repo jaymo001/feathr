@@ -93,6 +93,14 @@ private[offline] object SaltedJoinKeyColumnAppender extends JoinKeyColumnsAppend
 }
 
 /**
+ */
+private[offline] object DryRunKeyColumnAppender extends JoinKeyColumnsAppender {
+  override def appendJoinKeyColunmns(keys: Seq[String], df: DataFrame): (Seq[String], DataFrame) = {
+    val (newJoinKey, newDF) = DataFrameKeyCombiner().combine(df, keys, filterNull = false)
+    (Seq(newJoinKey), newDF)
+  }
+}
+/**
  * Explodes columns in provided DataFrame, if the join key columns are of [[ArrayType]].
  * This method creates a new column with "_exploded" suffix appended to existing column name.
  * The updated dataframe and join keys are returned.

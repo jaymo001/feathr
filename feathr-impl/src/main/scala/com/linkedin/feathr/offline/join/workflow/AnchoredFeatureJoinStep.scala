@@ -1,17 +1,20 @@
 package com.linkedin.feathr.offline.join.workflow
 
-import com.linkedin.feathr.common.{ErasedEntityTaggedFeature, FeatureTypeConfig}
 import com.linkedin.feathr.common.exception.{ErrorLabel, FeathrFeatureJoinException}
+import com.linkedin.feathr.common.{ErasedEntityTaggedFeature, FeatureTypeConfig}
 import com.linkedin.feathr.offline
 import com.linkedin.feathr.offline.FeatureDataFrame
 import com.linkedin.feathr.offline.anchored.feature.FeatureAnchorWithSource
 import com.linkedin.feathr.offline.anchored.feature.FeatureAnchorWithSource.{getDefaultValues, getFeatureTypes}
 import com.linkedin.feathr.offline.client.DataFrameColName
+import com.linkedin.feathr.offline.config.location.SimplePath
+import com.linkedin.feathr.offline.generation.SparkIOUtils
 import com.linkedin.feathr.offline.job.FeatureTransformation.{FEATURE_NAME_PREFIX, pruneAndRenameColumnWithTags, transformFeatures}
 import com.linkedin.feathr.offline.job.KeyedTransformedResult
 import com.linkedin.feathr.offline.join._
 import com.linkedin.feathr.offline.join.algorithms._
 import com.linkedin.feathr.offline.join.util.FrequentItemEstimatorFactory
+import com.linkedin.feathr.offline.transformation.DataFrameExt._
 import com.linkedin.feathr.offline.mvel.plugins.FeathrExpressionExecutionContext
 import com.linkedin.feathr.offline.source.accessor.DataSourceAccessor
 import com.linkedin.feathr.offline.transformation.DataFrameDefaultValueSubstituter.substituteDefaults
@@ -62,10 +65,10 @@ private[offline] class AnchoredFeatureJoinStep(
         // Note that dataframe.join() can handle string type join with numeric type correctly, so we don't need to cast all
         // key types to string explicitly as what we did for the RDD version
         val (leftJoinColumns, contextDFWithJoinKey) = if (isSaltedJoinRequiredForKeys(keyTags)) {
-          SaltedJoinKeyColumnAppender.appendJoinKeyColunmns(tagsInfo, contextDF)
-        } else {
-          leftJoinColumnExtractor.appendJoinKeyColunmns(tagsInfo, contextDF)
-        }
+            SaltedJoinKeyColumnAppender.appendJoinKeyColunmns(tagsInfo, contextDF)
+          } else {
+            leftJoinColumnExtractor.appendJoinKeyColunmns(tagsInfo, contextDF)
+          }
 
         // Compute default values and feature types, for the features joined in the stage
         val anchoredDFThisStage = anchorDFMap.filterKeys(featureNames.filter(allAnchoredFeatures.contains).map(allAnchoredFeatures).toSet)
@@ -170,20 +173,38 @@ private[offline] class AnchoredFeatureJoinStep(
           inputDF.withColumn(nameAndfield._1, lit(null).cast(nameAndfield._2.dataType))
         })
     } else {
+      val isDryRun = FeathrUtils.getFeathrJobParam(ctx.sparkSession.sparkContext.getConf, FeathrUtils.ENABLE_DRY_RUN).toBoolean
+      val isDebugMode = FeathrUtils.getFeathrJobParam(ctx.sparkSession.sparkContext.getConf, FeathrUtils.ENABLE_DEBUG_OUTPUT).toBoolean
+      if (isDebugMode) {
+        // dump left keys and right df
+        val basePath = FeathrUtils.getFeathrJobParam(ctx.sparkSession.sparkContext.getConf, FeathrUtils.DEBUG_OUTPUT_PATH)
+        val features = "features_" + featureToDFAndJoinKey._1.mkString("_")
+        val leftDfPath = SimplePath(basePath + "/" + features + "_obs_left")
+        log.info(s"Start dumping observation data before join feature ${features} to ${leftDfPath}")
+        val leftKeyDf = contextDF.select(leftJoinColumns.head, leftJoinColumns.tail:_*)
+        SparkIOUtils.writeDataFrame(leftKeyDf, leftDfPath, Map(), List())
+        log.info(s"Finish dumping observation data before join feature ${features} to ${leftDfPath}")
+        val rightDfPath = SimplePath(basePath + "/" + features + "_feature_left_")
+        log.info(s"Start dumping feature data before join feature ${features} to ${rightDfPath}")
+        SparkIOUtils.writeDataFrame(featureDF, rightDfPath, Map(), List())
+        log.info(s"Finish dumping feature data before join feature ${features} to ${rightDfPath}")
+      }
       if (isSaltedJoinRequiredForKeys(keyTags)) {
         val (rightJoinColumns, rightDF) = SaltedJoinKeyColumnAppender.appendJoinKeyColunmns(rawRightJoinKeys, featureDF)
         log.trace(s"rightJoinColumns= [${rightJoinColumns.mkString(", ")}] features= [${featureToDFAndJoinKey._1.mkString(", ")}]")
         val saltedJoinFrequentItemDF = ctx.frequentItemEstimatedDFMap.get(keyTags)
         val saltedJoiner = new SaltedSparkJoin(ctx.sparkSession, FrequentItemEstimatorFactory.createFromCache(saltedJoinFrequentItemDF))
-        saltedJoiner.join(leftJoinColumns, contextDF, rightJoinColumns, rightDF, JoinType.left_outer)
+        val refinedContextDF = if (isDryRun) contextDF.appendRows(leftJoinColumns, rightJoinColumns, rightDF) else contextDF
+        saltedJoiner.join(leftJoinColumns, refinedContextDF, rightJoinColumns, rightDF, JoinType.left_outer)
       } else {
         val (rightJoinColumns, rightDF) = rightJoinColumnExtractor.appendJoinKeyColunmns(rawRightJoinKeys, featureDF)
         log.trace(s"rightJoinColumns= [${rightJoinColumns.mkString(", ")}] features= [${featureToDFAndJoinKey._1.mkString(", ")}]")
-        joiner.join(leftJoinColumns, contextDF, rightJoinColumns, rightDF, JoinType.left_outer)
+        val refinedContextDF = if (isDryRun) contextDF.appendRows(leftJoinColumns, rightJoinColumns, rightDF) else contextDF
+        joiner.join(leftJoinColumns, refinedContextDF, rightJoinColumns, rightDF, JoinType.left_outer)
       }
-
     }
   }
+
 
   /**
    * Post-join pruning and renaming columns. Rename the feature columns by adding tags

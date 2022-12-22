@@ -6,7 +6,7 @@ import org.apache.log4j.{Level, Logger}
 import org.apache.spark.SparkConf
 import org.apache.spark.sql.SparkSession
 
-private[offline] object FeathrUtils {
+private[feathr] object FeathrUtils {
 
   val ENVIRONMENT = "offline"
   val ENABLE_DEBUG_OUTPUT = "debug.enabled"
@@ -38,9 +38,11 @@ private[offline] object FeathrUtils {
   val SPARK_JOIN_MAX_PARALLELISM = "max.parallelism"
   val CHECKPOINT_OUTPUT_PATH = "checkpoint.dir"
   val SPARK_JOIN_MIN_PARALLELISM = "min.parallelism"
+  val ENABLE_DRY_RUN = "enable.dry.run"
+  val DRY_RUN_ROW_COUNT = "dry.run.row.count"
 
   val defaultParams: Map[String, String] = Map(
-    ENABLE_DEBUG_OUTPUT -> "false",
+    ENABLE_DEBUG_OUTPUT -> "true",
     DEBUG_OUTPUT_PATH -> "/tmp/debug/feathr/output",
     CHECKPOINT_OUTPUT_PATH -> "/tmp/feathr/checkpoints",
     ENABLE_CHECKPOINT -> "false",
@@ -56,13 +58,15 @@ private[offline] object FeathrUtils {
 
     ENABLE_SLICK_JOIN -> "false",
     SALTED_JOIN_PERSIST -> "true",
-    ROW_BLOOMFILTER_MAX_THRESHOLD -> "-1",
+    ROW_BLOOMFILTER_MAX_THRESHOLD -> "0",
     // We found that if we have too many parallelism, then during the join shuffling, memoryOverhead could be too high,
 
     ENABLE_METRICS -> "false",
     // cap it to 10000 to make sure memoryOverhead is less than 2g (Feathr default value)
     SPARK_JOIN_MAX_PARALLELISM -> "10000",
-    SPARK_JOIN_MIN_PARALLELISM -> "10")
+    SPARK_JOIN_MIN_PARALLELISM -> "10",
+    ENABLE_DRY_RUN -> "true",
+    DRY_RUN_ROW_COUNT -> "10")
 
   /**
    * Get Feathr Offline version string from .properties file that gets created at build time
