@@ -5,6 +5,7 @@ import com.linkedin.feathr.common.tensor._
 import com.linkedin.feathr.common.types.PrimitiveType
 import com.linkedin.feathr.common.{AutoTensorizableTypes, FeatureTypeConfig, FeatureTypes}
 import com.linkedin.feathr.offline.transformation.FDSConversionUtils
+import org.apache.avro.SchemaBuilder.array
 import org.apache.logging.log4j.{LogManager, Logger}
 import org.apache.spark.sql.catalyst.encoders.RowEncoder
 import org.apache.spark.sql.types._
@@ -301,25 +302,34 @@ private[offline] object FeaturizedDatasetUtils {
           val iter = tensor.iterator
           val arity = tensor.getArity
           val dimensionSize = arity - 1
-          if (dimensionSize > 1) {
+          if (dimensionSize > 2) {
             throw new FeathrException(ErrorLabel.FEATHR_ERROR,
-              "DenseTensor only support 1D but not higher now. The dimension size is: " + dimensionSize)
+              "DenseTensor only support 0-2D but not higher now. The dimension size is: " + dimensionSize)
           }
+
           val valueColumnIndex = arity - 1
           val valueType = tensor.getTypes()(valueColumnIndex)
-          val array = new ArrayBuffer[Any](tensor.cardinality())
 
           iter.start()
+          var array = new ArrayBuffer[Any](tensor.cardinality())
+          var tmpArray = new ArrayBuffer[Any](tensor.cardinality())
+          var idx = 0L
+          var firstDimShape = tensor.getShape.last
           while (iter.isValid) {
             valueType.getRepresentation match {
-              case Primitive.INT => array += iter.getInt(valueColumnIndex)
-              case Primitive.LONG => array += iter.getLong(valueColumnIndex)
-              case Primitive.FLOAT => array += iter.getFloat(valueColumnIndex)
-              case Primitive.DOUBLE => array += iter.getDouble(valueColumnIndex)
-              case Primitive.STRING => array += iter.getString(valueColumnIndex)
-              case Primitive.BOOLEAN => array += iter.getBoolean(valueColumnIndex)
+              case Primitive.INT => tmpArray += iter.getInt(valueColumnIndex)
+              case Primitive.LONG => tmpArray += iter.getLong(valueColumnIndex)
+              case Primitive.FLOAT => tmpArray += iter.getFloat(valueColumnIndex)
+              case Primitive.DOUBLE => tmpArray += iter.getDouble(valueColumnIndex)
+              case Primitive.STRING => tmpArray += iter.getString(valueColumnIndex)
+              case Primitive.BOOLEAN => tmpArray += iter.getBoolean(valueColumnIndex)
             }
             iter.next()
+            idx = idx + 1
+            if (idx % firstDimShape == 0) {
+              array += tmpArray
+              tmpArray = new ArrayBuffer[Any](tensor.cardinality())
+            }
           }
           array
         } else {

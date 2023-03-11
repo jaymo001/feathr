@@ -407,7 +407,9 @@ class AnchoredFeaturesIntegTest extends FeathrIntegTest {
           |    key.sqlExpr: mId
           |    features: {
           |      featureWithNull {
-            |      def.sqlExpr: "FDSExtract(coalesce(denseValue, ARRAY(ARRAY(\"aa\", \"bb\", \"cc\", \"dd\", \"ee\"), ARRAY(\"UNK\", \"UNK\", \"UNK\", \"UNK\", \"UNK\")) ))"
+            |      def.sqlExpr: "FDSExtract(denseValue)"
+            |      default: [["aa", "bb", "cc", "dd", "ee"], ["UNK", "UNK", "UNK", "UNK", "UNK"]]
+            |
             |      type:{
             |          type: TENSOR
             |           tensorCategory: DENSE
@@ -418,7 +420,8 @@ class AnchoredFeaturesIntegTest extends FeathrIntegTest {
           |         }
           |       }
           |  }
-          |}
+          | }
+          |
         """.stripMargin,
       observationDataPath = "anchorAndDerivations/testMVELLoopExpFeature-observations.csv")
 

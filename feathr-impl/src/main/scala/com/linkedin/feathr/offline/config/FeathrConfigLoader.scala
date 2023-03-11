@@ -13,8 +13,8 @@ import com.linkedin.feathr.offline.ErasedEntityTaggedFeature
 import com.linkedin.feathr.offline.anchored.anchorExtractor.{SQLConfigurableAnchorExtractor, SimpleConfigurableAnchorExtractor, TimeWindowConfigurableAnchorExtractor}
 import com.linkedin.feathr.offline.anchored.feature.{FeatureAnchor, FeatureAnchorWithSource}
 import com.linkedin.feathr.offline.anchored.keyExtractor.{MVELSourceKeyExtractor, SQLSourceKeyExtractor}
-import com.linkedin.feathr.offline.client.plugins.{AnchorExtractorAdaptor, FeathrUdfPluginContext, FeatureDerivationFunctionAdaptor, SimpleAnchorExtractorSparkAdaptor, SourceKeyExtractorAdaptor}
-import com.linkedin.feathr.offline.config.location.{DataLocation, KafkaEndpoint, LocationUtils, SimplePath, Snowflake}
+import com.linkedin.feathr.offline.client.plugins._
+import com.linkedin.feathr.offline.config.location._
 import com.linkedin.feathr.offline.derived._
 import com.linkedin.feathr.offline.derived.functions.{MvelFeatureDerivationFunction, SQLFeatureDerivationFunction, SeqJoinDerivationFunction, SimpleMvelDerivationFunction}
 import com.linkedin.feathr.offline.source.{DataSource, SourceFormatType, TimeWindowParams}
@@ -452,6 +452,9 @@ private[offline] class AnchorLoader extends JsonDeserializer[FeatureAnchor] {
         i match {
           case v: Number => v.floatValue()
           case v: String => v
+          case v: scala.collection.immutable.List[Any] =>
+            val vv = arr.flatten(_.asInstanceOf[List[Any]]).toList.asJava
+            return vv.asInstanceOf[Any]
           case _ => throw new FeathrConfigException(ErrorLabel.FEATHR_USER_ERROR, "Value array can only contains string or number")
         }
       }

@@ -191,6 +191,9 @@ public class FeatureValue implements Serializable, KryoSerializable {
       } else {
         throw new IllegalArgumentException("The value type " + value.getClass() + " is not supported.");
       }
+    } else if (type.getDimensionTypes().size() == 2){
+      TensorData tensorData = Tensors.asDenseTensor(type, (List<?>) value);
+      _featureValueInternal = TensorFeatureValue.fromTensorData(tensorFeatureType, tensorData);
     } else {
       throw new IllegalArgumentException("Only creating of 0-d and 1-d tensor is supported but got: " + type);
     }

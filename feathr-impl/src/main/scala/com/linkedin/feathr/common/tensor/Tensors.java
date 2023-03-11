@@ -23,7 +23,7 @@ public final class Tensors {
     private static BulkTensorBuilder getBulkBuilder(TensorType type, int size) {
         BulkTensorBuilder builder = DenseTensorBuilderFactory.INSTANCE.getBulkTensorBuilder(type);
         if (!builder.hasVariableCardinality() && builder.getStaticCardinality() != size) {
-            throw new IllegalArgumentException(
+           throw new IllegalArgumentException(
                     "The number of values " + size + " is not equal to the size of the type " + builder.getStaticCardinality()
                             + ".");
         }
