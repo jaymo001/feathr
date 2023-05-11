@@ -1,27 +1,41 @@
 package com.linkedin.feathr.offline
 
+import com.linkedin.feathr.common.FeatureValue
 import com.linkedin.feathr.offline.anchored.keyExtractor.AlienSourceKeyExtractorAdaptor
 import com.linkedin.feathr.offline.client.plugins.FeathrUdfPluginContext
 import com.linkedin.feathr.offline.derived.AlienDerivationFunctionAdaptor
+import com.linkedin.feathr.offline.mvel.FeathrFeatureValueAsAlien
 import com.linkedin.feathr.offline.mvel.plugins.FeathrExpressionExecutionContext
 import com.linkedin.feathr.offline.plugins.{AlienFeatureValue, AlienFeatureValueTypeAdaptor}
 import com.linkedin.feathr.offline.util.FeathrTestUtils
 import org.apache.spark.sql.Row
 import org.apache.spark.sql.types.{FloatType, StringType, StructField, StructType}
-import org.testng.annotations.Test
-
+import org.testng.Assert.{assertEquals, assertTrue}
+import org.testng.annotations.{BeforeClass, Test}
 class TestFeathrUdfPlugins extends FeathrIntegTest {
 
   val MULTILINE_QUOTE = "\"\"\""
 
   private val mvelContext = new FeathrExpressionExecutionContext()
 
-  // todo - support udf plugins through FCM
-  @Test (enabled = true)
-  def testMvelUdfPluginSupport: Unit = {
+
+  @BeforeClass
+  override def setFeathrConfig(): Unit = {
     mvelContext.setupExecutorMvelContext(classOf[AlienFeatureValue], new AlienFeatureValueTypeAdaptor(), ss.sparkContext)
     FeathrUdfPluginContext.registerUdfAdaptor(new AlienDerivationFunctionAdaptor(), ss.sparkContext)
     FeathrUdfPluginContext.registerUdfAdaptor(new AlienSourceKeyExtractorAdaptor(), ss.sparkContext)
+  }
+
+  @Test
+  def testFeatureValueWrapper(): Unit = {
+    val featureValue = new FeatureValue(2.0f)
+    val featureFeatureValueAsAlien = new FeathrFeatureValueAsAlien(featureValue)
+    assertTrue(mvelContext.canConvert(FeatureValue.getClass, featureFeatureValueAsAlien.getClass))
+    assertEquals(mvelContext.convert(featureFeatureValueAsAlien, FeatureValue.getClass), featureValue)
+  }
+
+  @Test (enabled = true)
+  def testMvelUdfPluginSupport: Unit = {
     val df = runLocalFeatureJoinForTest(
       joinConfigAsString = """
                              | features: {
@@ -134,4 +148,6 @@ class TestFeathrUdfPlugins extends FeathrIntegTest {
     def cmpFunc(row: Row): String = row.get(0).toString
     FeathrTestUtils.assertDataFrameApproximatelyEquals(filteredDf, expectedDf, cmpFunc)
   }
+
+
 }

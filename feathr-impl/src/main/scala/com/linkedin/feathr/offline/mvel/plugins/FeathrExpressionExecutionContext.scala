@@ -70,6 +70,7 @@ class FeathrExpressionExecutionContext extends Serializable {
    */
   def canConvert(toType: Class[_], convertFrom: Class[_]): Boolean = {
     if (isAssignableFrom(toType, convertFrom)) return true
+    if (isAssignableFrom(classOf[FeatureValueWrapper[toType.type]], convertFrom)) return true
     if (converters.value.contains(toType.getCanonicalName)) {
       converters.value.get(toType.getCanonicalName).get.canConvertFrom(toNonPrimitiveType(convertFrom))
     } else if (toType.isArray && canConvert(toType.getComponentType, convertFrom)) {
@@ -110,6 +111,9 @@ class FeathrExpressionExecutionContext extends Serializable {
    */
   def convert[T](in: Any, toType: Class[T]): T = {
     if ((toType eq in.getClass) || toType.isAssignableFrom(in.getClass)) return in.asInstanceOf[T]
+    if (isAssignableFrom(classOf[FeatureValueWrapper[toType.type]], in.getClass)) {
+      return in.asInstanceOf[FeatureValueWrapper[_]].getFeatureValue().asInstanceOf[T]
+    }
     val converter = if (converters.value != null) {
       converters.value.get(toType.getCanonicalName).get
     } else {
