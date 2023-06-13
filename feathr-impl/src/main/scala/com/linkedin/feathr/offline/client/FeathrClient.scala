@@ -1,7 +1,7 @@
 package com.linkedin.feathr.offline.client
 
 import com.linkedin.feathr.common.exception._
-import com.linkedin.feathr.common.{FeatureInfo, FeatureTypeConfig, Header, InternalApi, JoiningFeatureParams, RichConfig, TaggedFeatureName}
+import com.linkedin.feathr.common.{FeatureInfo, Header, InternalApi, JoiningFeatureParams, RichConfig, TaggedFeatureName}
 import com.linkedin.feathr.offline.config.sources.FeatureGroupsUpdater
 import com.linkedin.feathr.offline.config.{FeathrConfig, FeathrConfigLoader, FeatureGroupsGenerator, FeatureJoinConfig}
 import com.linkedin.feathr.offline.generation.{DataFrameFeatureGenerator, FeatureGenKeyTagAnalyzer, StreamingFeatureGenerator}
@@ -12,10 +12,8 @@ import com.linkedin.feathr.offline.mvel.plugins.FeathrExpressionExecutionContext
 import com.linkedin.feathr.offline.source.DataSource
 import com.linkedin.feathr.offline.source.accessor.DataPathHandler
 import com.linkedin.feathr.offline.swa.SWAHandler
-import com.linkedin.feathr.offline.transformation.DataFrameDefaultValueSubstituter.substituteDefaults
 import com.linkedin.feathr.offline.util._
 import org.apache.logging.log4j.LogManager
-import org.apache.spark.sql.functions.lit
 import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.{DataFrame, SparkSession}
 
@@ -118,9 +116,9 @@ class FeathrClient private[offline] (sparkSession: SparkSession, featureGroups: 
         dataFrameFeatureGenerator.generateFeaturesAsDF(sparkSession, featureGenSpec, featureGroups, keyTaggedRequiredFeatures)
 
       featureMap map {
-        case (taggedFeatureName, (df, _)) =>
+        case (taggedFeatureName, (df, header)) =>
           // Build FDS and convert key columns to Feature columns instead of Opaque columns
-          val fds = SparkFeaturizedDataset(df, FeaturizedDatasetMetadata())
+          val fds = SparkFeaturizedDataset(df, FeaturizedDatasetMetadata(header=Some(header)))
           (taggedFeatureName, fds)
       }
     }
